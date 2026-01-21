@@ -255,7 +255,7 @@
             </div>
         </div>
 
-        <!-- 4. EXECUTIVE REPORTS VIEW (NEW) -->
+        <!-- 4. EXECUTIVE REPORTS VIEW -->
         <div id="view-reports" class="view">
             <h3 style="margin-bottom:20px; color:var(--primary);">Executive Summary</h3>
             
@@ -339,7 +339,7 @@
     </div>
 </main>
 
-<!-- MODALS (Same as before but styled cleaner) -->
+<!-- MODALS -->
 <div id="branchModal" class="modal">
     <div class="modal-content">
         <h3 id="branchModalTitle" style="margin-bottom:25px; color:var(--primary); border-bottom:1px solid #eee; padding-bottom:10px;">Update Branch Data</h3>
@@ -429,7 +429,7 @@
     </div>
 </div>
 
-<!-- ADD MODALS (Settings) -->
+<!-- ADD MODALS -->
 <div id="addBranchModal" class="modal">
     <div class="modal-content" style="width:400px;">
         <h3>Add New Branch</h3>
@@ -461,7 +461,7 @@
 
 <script>
     // --- CONFIGURATION & DATA ---
-    const BRANCHES = ["Hamdan St", "Khalidiya", "Mussafah", "Muroor", "Al Barsha", "Al Satwa", "Al Majaz", "Al Rigga", "Al Electra"];
+    const BRANCHES = ["Hamdan St", "Khalidiya", "Mussafah", "Muroor", "Al Barsha", "Al Satwa", "Al Majaz", "Al Rigga", "Al Electra", "CCM"];
     const AGENTS = ["manju ranabhat", "NONA Rose", "Melvin compendio", "SALEH EMAD", "Asmita Sapkota", "NIRJALA MAHRJAN", "jasmen"];
 
     function createRecord(day, branch, sales, txn, avr) {
@@ -496,9 +496,10 @@
         createRecord(2, "Mussafah", 190, 5, 38.0), createRecord(2, "Muroor", 217, 2, 108.5)
     ];
 
-    // INITIAL DATA (Agents)
+    // INITIAL DATA (Agents) - UPDATED WITH MANJU DATA
     const initialAgentData = [
         { date: "2026-01-20", name: "manju ranabhat", branch: "CCM", orders: 11, sales: 864, target: 2000 },
+        { date: "2026-01-21", name: "manju ranabhat", branch: "Hamdan St", orders: 38, sales: 2000, target: 2000 }, // NEW DATA ADDED
         { date: "2026-01-20", name: "NONA Rose", branch: "CCM", orders: 44, sales: 1985, target: 2000 },
         { date: "2026-01-20", name: "Melvin compendio", branch: "CCM", orders: 17, sales: 1076, target: 2000 },
         { date: "2026-01-20", name: "SALEH EMAD", branch: "CCM", orders: 12, sales: 853, target: 2000 },
@@ -526,7 +527,6 @@
         },
 
         setupUI: () => {
-            // Populate Selects
             const branchSelects = ['inpBranch', 'chartBranchFilter', 'agentBranch', 'newAgentBranch'];
             branchSelects.forEach(id => {
                 const sel = document.getElementById(id);
@@ -546,7 +546,6 @@
                 agentSel.appendChild(opt);
             });
 
-            // ATV Auto Calc Listener
             document.getElementById('inpSales').addEventListener('input', app.calcBranchAvr);
             document.getElementById('inpTxn').addEventListener('input', app.calcBranchAvr);
         },
@@ -581,12 +580,10 @@
             const totalTxn = currentData.reduce((acc, curr) => acc + curr.txn, 0);
             const globalATV = totalTxn > 0 ? (totalSales/totalTxn).toFixed(1) : 0;
 
-            // Update KPIs
             document.getElementById('kpi-total-sales').innerText = `AED ${totalSales.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
             document.getElementById('kpi-total-txn').innerText = totalTxn.toLocaleString();
             document.getElementById('kpi-atv').innerText = `AED ${globalATV}`;
 
-            // Agent Global Achievement (Average of all daily achievements)
             let totalAchv = 0, achvCount = 0;
             app.data.agents.forEach(d => {
                 if(d.target > 0) {
@@ -604,7 +601,6 @@
             const currentData = app.getActiveData();
             const maxDay = 10;
             
-            // Data Prep
             let labels = Array.from({length: maxDay}, (_, i) => `Day ${i+1}`);
             let salesData = new Array(maxDay).fill(0);
             let txnData = new Array(maxDay).fill(0);
@@ -618,11 +614,9 @@
                 }
             });
 
-            // Destroy old charts
             if(app.charts.trend) app.charts.trend.destroy();
             if(app.charts.avr) app.charts.avr.destroy();
 
-            // 1. Trend Chart
             app.charts.trend = new Chart(document.getElementById('trendChart'), {
                 type: 'bar',
                 data: {
@@ -638,7 +632,6 @@
                 }
             });
 
-            // 2. Branch Efficiency
             let branchAvr = BRANCHES.map(b => {
                 const bData = currentData.filter(x => x.branch === b);
                 const s = bData.reduce((a,c)=>a+c.sales,0);
@@ -708,12 +701,14 @@
             const search = document.getElementById('agentSearch').value.toLowerCase();
             
             tbody.innerHTML = '';
-            // Filter by search
             const data = app.data.agents
                 .filter(d => d.name.toLowerCase().includes(search) || d.branch.toLowerCase().includes(search))
                 .sort((a,b) => new Date(b.date) - new Date(a.date));
             
-            // Calculate Cumulatives
+            // --- CORRECTED CUMULATIVE LOGIC ---
+            // We need to calculate CUMULATIVE totals for every agent UP TO the specific row's date
+            // But for a simple table view, we usually show the "Running Total" up to TODAY.
+            // Here we will calculate the Cumulative Totals for ALL records available for that agent.
             const cumStats = {};
             app.data.agents.forEach(d => {
                 if(!cumStats[d.name]) cumStats[d.name] = { s:0, t:0 };
@@ -725,9 +720,10 @@
                 const avr = d.orders > 0 ? (d.sales/d.orders).toFixed(1) : "0.0";
                 const pct = d.target > 0 ? ((d.sales/d.target)*100).toFixed(0) : "0";
                 
-                // Correct Cumulative Logic
+                // Cumulative Stats
                 const cS = cumStats[d.name].s;
                 const cT = cumStats[d.name].t;
+                // Cumulative Variance = (Total Sales) - (Total Targets)
                 const varVal = (cS - cT).toFixed(0);
 
                 let status = 'status-danger';
@@ -791,9 +787,9 @@
                 else app.data.agents.push(newRec);
             }
 
-            app.renderDashboard(); // Refresh KPIs
+            app.renderDashboard();
             app.renderAgentTable();
-            app.renderReports(); // Refresh Reports
+            app.renderReports();
             document.getElementById('agentModal').style.display = 'none';
             app.showToast("Agent Data Saved");
         },
@@ -856,11 +852,10 @@
             app.showToast("Branch Data Saved");
         },
 
-        // --- EXECUTIVE REPORTS (NEW) ---
+        // --- EXECUTIVE REPORTS ---
         renderReports: () => {
             const sortType = document.getElementById('reportSort').value;
             
-            // 1. Top Branches
             let branchTotals = BRANCHES.map(b => {
                 const d = [...app.data.delivery, ...app.data.online].filter(x => x.branch === b);
                 const sales = d.reduce((a,c)=>a+c.sales,0);
@@ -873,7 +868,6 @@
             `).join('');
             document.getElementById('report-top-branches').innerHTML = topBranchHtml || '<li>No data</li>';
 
-            // 2. Low Performers (Agents < 50% Target)
             const lowAgents = app.data.agents.filter(a => {
                 const pct = a.target > 0 ? (a.sales/a.target)*100 : 100;
                 return pct < 50 && a.sales > 0;
@@ -884,7 +878,6 @@
             `).join('');
             document.getElementById('report-low-performers').innerHTML = lowPerfHtml || '<li>All agents performing well!</li>';
 
-            // 3. Target Stats
             const metCount = app.data.agents.filter(a => a.sales >= a.target && a.target > 0).length;
             const activeCount = app.data.agents.filter(a => a.target > 0).length;
             document.getElementById('report-target-stats').innerHTML = `
@@ -893,7 +886,6 @@
                 <li><span>Success Rate</span> <span class="val">${activeCount ? ((metCount/activeCount)*100).toFixed(0) : 0}%</span></li>
             `;
 
-            // 4. Detailed Ranking Table
             const cumStats = {};
             app.data.agents.forEach(d => {
                 if(!cumStats[d.name]) cumStats[d.name] = { s:0, o:0, t:0 };
