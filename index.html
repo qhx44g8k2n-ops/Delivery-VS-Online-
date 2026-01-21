@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crispy Chicken | Branch Performance & Delivery Analysis</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for Analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --primary: #D32F2F; --primary-dark: #b71c1c; --primary-light: #ffcdd2;
+            --secondary: #FFC107; --secondary-dark: #ffb300;
+            --success: #388E3C; --warning: #F57C00; --danger: #D32F2F;
+            --bg-body: #f0f2f5; --bg-panel: #ffffff; --text-main: #2c3e50; --text-muted: #7f8c8d;
+            --border: #e0e0e0;
+            --shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        * { box-sizing: border-box; font-family: 'Segoe UI', 'Roboto', Helvetica, sans-serif; margin:0; padding:0; }
+        body { background-color: var(--bg-body); color: var(--text-main); height:100vh; display:flex; overflow:hidden; }
+
+        /* SIDEBAR */
+        aside { width:240px; background:#1e1e2d; color:white; display:flex; flex-direction:column; border-right:1px solid #333; z-index:20; flex-shrink:0; }
+        .brand { padding:20px; display:flex; align-items:center; background:linear-gradient(135deg, var(--primary), var(--primary-dark)); font-weight:800; font-size:1.1rem; letter-spacing:0.5px; }
+        .brand span { color:var(--secondary); margin-left:5px; }
+        .nav-menu { flex:1; padding:20px 10px; display:flex; flex-direction:column; gap:5px; }
+        .nav-item { padding:12px 15px; cursor:pointer; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:12px; border-radius:6px; transition:all 0.2s; font-size:0.9rem; }
+        .nav-item:hover { background:rgba(255,255,255,0.05); color:white; }
+        .nav-item.active { background:var(--primary); color:white; font-weight:600; box-shadow: 0 4px 10px rgba(211, 47, 47, 0.4); }
+
+        /* MAIN LAYOUT */
+        main { flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+        .top-bar { background:white; padding:15px 25px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; z-index:10; }
+        .view-container { flex:1; overflow-y:auto; overflow-x:hidden; padding:20px; position:relative; }
+
+        /* HEADER CONTROLS */
+        .header-title h2 { font-size:1.4rem; color:var(--text-main); }
+        .header-title p { font-size:0.85rem; color:var(--text-muted); margin-top:2px; }
+        
+        .controls { display:flex; gap:10px; align-items:center; }
+        
+        .filter-toggle { 
+            display:flex; background:#f1f1f1; border-radius:8px; padding:4px; border:1px solid #ddd;
+        }
+        .filter-opt {
+            padding:6px 16px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600; color:#666; transition:0.2s;
+        }
+        .filter-opt.active { background:white; color:var(--primary); box-shadow:0 2px 4px rgba(0,0,0,0.05); }
+
+        /* TABLE STYLES - MATRIX */
+        .card { background:white; border-radius:12px; box-shadow:var(--shadow); padding:20px; margin-bottom:20px; border:1px solid var(--border); }
+        
+        .table-wrapper { overflow-x:auto; border-radius:8px; border:1px solid var(--border); }
+        table { width:100%; border-collapse:collapse; font-size:0.85rem; min-width: 1600px; }
+        
+        th { 
+            background:#f8f9fa; color:var(--text-muted); font-weight:700; text-align:center; padding:12px 8px; 
+            border-bottom:2px solid var(--border); position:sticky; top:0; z-index:10; white-space: nowrap; 
+            text-transform: uppercase; font-size:0.75rem; letter-spacing:0.5px;
+        }
+        th:first-child { position:sticky; left:0; z-index:20; background:#f8f9fa; border-right:2px solid #eee; width:60px; }
+        th.highlight { background:var(--primary-light); color:var(--primary-dark); }
+        
+        td { padding:8px 6px; border-bottom:1px solid #eee; text-align:center; border-right:1px solid #eee; white-space: nowrap; vertical-align: middle; }
+        td:first-child { position:sticky; left:0; z-index:10; background:white; border-right:2px solid #eee; font-weight:bold; color:var(--text-muted); }
+
+        /* CELL CONTENT & INDICATORS */
+        .cell-main { font-size:1rem; font-weight:700; color:var(--text-main); display:block; }
+        .cell-sub { font-size:0.75rem; color:var(--text-muted); display:block; margin-top:1px; }
+        .cell-avr { font-size:0.8rem; font-weight:700; display:inline-block; padding:2px 6px; border-radius:4px; margin-top:4px; }
+        
+        /* Dynamic Coloring based on performance */
+        .avr-high { background-color: #e8f5e9; color: #2e7d32; } /* > 50 */
+        .avr-med { background-color: #fff3e0; color: #ef6c00; } /* 40-50 */
+        .avr-low { background-color: #ffebee; color: #c62828; } /* < 40 */
+        .avr-null { background-color: #f5f5f5; color: #bdbdbd; }
+
+        /* FOOTER TOTALS */
+        tfoot tr { background:#2c3e50; color:white; font-weight:bold; }
+        tfoot td { padding:12px 6px; }
+
+        /* DASHBOARD / CHARTS */
+        .kpi-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:20px; margin-bottom:20px; }
+        .kpi-card { background:white; padding:20px; border-radius:10px; box-shadow:var(--shadow); border-left:4px solid var(--primary); }
+        .kpi-title { font-size:0.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
+        .kpi-value { font-size:1.8rem; font-weight:800; color:var(--text-main); margin-top:5px; }
+        .kpi-sub { font-size:0.8rem; color:var(--success); margin-top:5px; display:flex; align-items:center; gap:5px; }
+
+        .charts-container { display:grid; grid-template-columns: 2fr 1fr; gap:20px; height:400px; }
+        .chart-box { background:white; padding:20px; border-radius:10px; box-shadow:var(--shadow); border:1px solid var(--border); display:flex; flex-direction:column; }
+        .chart-header { font-weight:700; margin-bottom:15px; display:flex; justify-content:space-between; }
+
+        /* MODAL */
+        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:100; justify-content:center; align-items:center; backdrop-filter:blur(2px); }
+        .modal-content { background:white; padding:30px; border-radius:12px; width:450px; box-shadow:0 20px 40px rgba(0,0,0,0.2); animation: slideUp 0.3s ease; }
+        @keyframes slideUp { from {transform:translateY(20px); opacity:0;} to {transform:translateY(0); opacity:1;} }
+
+        /* BUTTONS */
+        .btn { padding:10px 18px; border-radius:6px; border:none; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; gap:8px; font-size:0.9rem; transition:0.2s; }
+        .btn-primary { background:var(--primary); color:white; }
+        .btn-primary:hover { background:var(--primary-dark); }
+        .btn-secondary { background:white; border:1px solid #ddd; color:#555; }
+        .btn-secondary:hover { background:#f9f9f9; }
+        
+        .view { display:none; }
+        .view.active { display:block; animation:fadeIn 0.4s ease; }
+        @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+
+        /* TOAST */
+        .toast { position:fixed; bottom:20px; right:20px; background:#333; color:white; padding:12px 24px; border-radius:6px; z-index:200; transform:translateY(100px); transition:0.3s; box-shadow:0 5px 15px rgba(0,0,0,0.2); }
+        .toast.show { transform:translateY(0); }
+
+        /* Print Override */
+        @media print {
+            aside, .top-bar, .controls, .btn, .filter-toggle { display:none !important; }
+            .view-container { padding:0; overflow:visible; }
+            body, main { height:auto; overflow:visible; background:white; }
+            .table-wrapper { border:none; }
+            table { min-width:100%; }
+            th, td { border:1px solid #ccc; }
+        }
+    </style>
+</head>
+<body>
+
+<aside id="sidebar">
+    <div class="brand"><i class="fas fa-drumstick-bite"></i> <span>CRISPY BI</span></div>
+    <div class="nav-menu">
+        <div class="nav-item active" onclick="app.switchTab('dashboard')">
+            <i class="fas fa-chart-line"></i> Analysis & Trends
+        </div>
+        <div class="nav-item" onclick="app.switchTab('matrix')">
+            <i class="fas fa-table"></i> Daily Matrix
+        </div>
+        <div class="nav-item" onclick="app.switchTab('settings')">
+            <i class="fas fa-cog"></i> Settings
+        </div>
+    </div>
+</aside>
+
+<main>
+    <div class="top-bar">
+        <div class="header-title">
+            <h2 id="pageTitle">Branch Analysis</h2>
+            <p>Performance trends and daily KPI tracking</p>
+        </div>
+        <div class="controls">
+            <!-- Channel Toggle -->
+            <div class="filter-toggle">
+                <div class="filter-opt active" onclick="app.setChannel('delivery', this)">
+                    <i class="fas fa-motorcycle"></i> Delivery
+                </div>
+                <div class="filter-opt" onclick="app.setChannel('online', this)">
+                    <i class="fas fa-globe"></i> Online
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="app.exportCSV()"><i class="fas fa-file-csv"></i> Export</button>
+            <button class="btn btn-primary" onclick="app.openModal()"><i class="fas fa-plus"></i> Add Data</button>
+        </div>
+    </div>
+
+    <div class="view-container">
+        
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="view active">
+            <!-- KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-title">Total Channel Sales</div>
+                    <div class="kpi-value" id="kpi-total-sales">AED 0</div>
+                    <div class="kpi-sub"><i class="fas fa-calendar-alt"></i> All Days Combined</div>
+                </div>
+                <div class="kpi-card" style="border-color: var(--secondary);">
+                    <div class="kpi-title">Average Transaction (ATV)</div>
+                    <div class="kpi-value" id="kpi-atv">AED 0</div>
+                    <div class="kpi-sub"><i class="fas fa-chart-bar"></i> Per Order Efficiency</div>
+                </div>
+                <div class="kpi-card" style="border-color: var(--success);">
+                    <div class="kpi-title">Top Branch</div>
+                    <div class="kpi-value" id="kpi-top-branch">-</div>
+                    <div class="kpi-sub" id="kpi-top-val">0 AED Sales</div>
+                </div>
+                <div class="kpi-card" style="border-color: var(--danger);">
+                    <div class="kpi-title">Needs Attention</div>
+                    <div class="kpi-value" id="kpi-low-branch">-</div>
+                    <div class="kpi-sub">Lowest ATV Performance</div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-container">
+                <div class="chart-box">
+                    <div class="chart-header">
+                        <span>Sales vs Transactions Trend</span>
+                        <select id="chartBranchFilter" onchange="app.updateCharts()" style="padding:5px; border-radius:4px; border:1px solid #ddd;">
+                            <option value="all">All Branches</option>
+                        </select>
+                    </div>
+                    <div style="flex:1; position:relative;">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-box">
+                    <div class="chart-header">Branch Efficiency (ATV)</div>
+                    <div style="flex:1; position:relative;">
+                        <canvas id="avrChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MATRIX VIEW -->
+        <div id="view-matrix" class="view">
+            <div class="table-wrapper">
+                <table id="matrixTable">
+                    <thead></thead>
+                    <tbody></tbody>
+                    <tfoot></tfoot>
+                </table>
+            </div>
+            <div style="margin-top:15px; padding:0 10px; font-size:0.85rem; color:var(--text-muted); display:flex; gap:20px;">
+                <span><i class="fas fa-square" style="color:#e8f5e9;"></i> Good Performance (>50 AED)</span>
+                <span><i class="fas fa-square" style="color:#fff3e0;"></i> Average (40-50 AED)</span>
+                <span><i class="fas fa-square" style="color:#ffebee;"></i> Low Performance (<40 AED)</span>
+            </div>
+        </div>
+
+    </div>
+</main>
+
+<!-- ADD DATA MODAL -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h3 style="color:var(--primary); margin:0;">Update Records</h3>
+            <button onclick="document.getElementById('addModal').style.display='none'" style="background:none; border:none; font-size:1.2rem; cursor:pointer;">&times;</button>
+        </div>
+        <form id="addForm" onsubmit="app.saveData(event)">
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:0.85rem; font-weight:700; margin-bottom:5px;">Channel Type</label>
+                <div style="display:flex; gap:10px;">
+                    <label style="flex:1; padding:10px; border:1px solid #ddd; border-radius:6px; text-align:center; cursor:pointer;">
+                        <input type="radio" name="channel" value="delivery" checked onchange="app.handleChannelChange()"> Delivery
+                    </label>
+                    <label style="flex:1; padding:10px; border:1px solid #ddd; border-radius:6px; text-align:center; cursor:pointer;">
+                        <input type="radio" name="channel" value="online" onchange="app.handleChannelChange()"> Online
+                    </label>
+                </div>
+            </div>
+            <div style="display:flex; gap:15px; margin-bottom:15px;">
+                <div style="flex:1;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; margin-bottom:5px;">Day</label>
+                    <select id="inpDay" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;"></select>
+                </div>
+                <div style="flex:1.5;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; margin-bottom:5px;">Branch</label>
+                    <select id="inpBranch" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;"></select>
+                </div>
+            </div>
+            <div style="display:flex; gap:15px; margin-bottom:20px;">
+                <div style="flex:1;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; margin-bottom:5px;">Sales (AED)</label>
+                    <input type="number" id="inpSales" required placeholder="0" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;">
+                </div>
+                <div style="flex:1;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; margin-bottom:5px;">Transactions</label>
+                    <input type="number" id="inpTxn" required placeholder="0" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;">
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('addModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Record</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast">Action Successful</div>
+
+<script>
+    // CONFIGURATION
+    const BRANCHES = ["Hamdan St", "Khalidiya", "Mussafah", "Muroor", "Al Barsha", "Al Satwa", "Al Majaz", "Al Rigga", "Al Electra"];
+    
+    // DATA GENERATION HELPER
+    function createRecord(day, branch, sales, txn, avr) {
+        return { day, branch, sales, txn, avr };
+    }
+
+    // DELIVERY DATA (Existing from previous step)
+    const initialDeliveryData = [
+        // Days 1-19...
+        { day: 1, branch: "Hamdan St", sales: 2187, txn: 46, avr: 47.5 }, { day: 1, branch: "Khalidiya", sales: 788, txn: 19, avr: 41.5 },
+        { day: 1, branch: "Mussafah", sales: 1615, txn: 27, avr: 59.8 }, { day: 1, branch: "Muroor", sales: 847, txn: 20, avr: 42.4 },
+        { day: 1, branch: "Al Barsha", sales: 493, txn: 11, avr: 44.8 }, { day: 1, branch: "Al Satwa", sales: 266, txn: 6, avr: 44.3 },
+        { day: 1, branch: "Al Majaz", sales: 1103, txn: 12, avr: 91.9 }, { day: 1, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 1, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 2, branch: "Hamdan St", sales: 1167, txn: 28, avr: 41.7 }, { day: 2, branch: "Khalidiya", sales: 922, txn: 13, avr: 70.9 },
+        { day: 2, branch: "Mussafah", sales: 1025, txn: 20, avr: 51.3 }, { day: 2, branch: "Muroor", sales: 743, txn: 13, avr: 57.2 },
+        { day: 2, branch: "Al Barsha", sales: 655, txn: 13, avr: 50.4 }, { day: 2, branch: "Al Satwa", sales: 261, txn: 7, avr: 37.3 },
+        { day: 2, branch: "Al Majaz", sales: 744, txn: 11, avr: 67.6 }, { day: 2, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 2, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 3, branch: "Hamdan St", sales: 2303, txn: 45, avr: 51.2 }, { day: 3, branch: "Khalidiya", sales: 1097, txn: 22, avr: 49.9 },
+        { day: 3, branch: "Mussafah", sales: 800, txn: 18, avr: 44.4 }, { day: 3, branch: "Muroor", sales: 1040, txn: 20, avr: 52.0 },
+        { day: 3, branch: "Al Barsha", sales: 1000, txn: 21, avr: 47.6 }, { day: 3, branch: "Al Satwa", sales: 543, txn: 10, avr: 54.3 },
+        { day: 3, branch: "Al Majaz", sales: 841, txn: 17, avr: 49.5 }, { day: 3, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 3, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 4, branch: "Hamdan St", sales: 1533, txn: 35, avr: 43.8 }, { day: 4, branch: "Khalidiya", sales: 1198, txn: 22, avr: 54.5 },
+        { day: 4, branch: "Mussafah", sales: 1604, txn: 21, avr: 76.4 }, { day: 4, branch: "Muroor", sales: 918, txn: 19, avr: 48.3 },
+        { day: 4, branch: "Al Barsha", sales: 556, txn: 20, avr: 27.8 }, { day: 4, branch: "Al Satwa", sales: 318, txn: 9, avr: 35.3 },
+        { day: 4, branch: "Al Majaz", sales: 644, txn: 11, avr: 58.5 }, { day: 4, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 4, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 5, branch: "Hamdan St", sales: 1538, txn: 39, avr: 39.4 }, { day: 5, branch: "Khalidiya", sales: 999, txn: 23, avr: 43.4 },
+        { day: 5, branch: "Mussafah", sales: 838, txn: 22, avr: 38.1 }, { day: 5, branch: "Muroor", sales: 755, txn: 16, avr: 47.2 },
+        { day: 5, branch: "Al Barsha", sales: 888, txn: 20, avr: 44.4 }, { day: 5, branch: "Al Satwa", sales: 1400, txn: 10, avr: 140.0 },
+        { day: 5, branch: "Al Majaz", sales: 443, txn: 10, avr: 44.3 }, { day: 5, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 5, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 6, branch: "Hamdan St", sales: 2341, txn: 51, avr: 45.9 }, { day: 6, branch: "Khalidiya", sales: 685, txn: 19, avr: 36.1 },
+        { day: 6, branch: "Mussafah", sales: 598, txn: 18, avr: 33.2 }, { day: 6, branch: "Muroor", sales: 1083, txn: 21, avr: 51.6 },
+        { day: 6, branch: "Al Barsha", sales: 1073, txn: 21, avr: 51.1 }, { day: 6, branch: "Al Satwa", sales: 518, txn: 12, avr: 43.2 },
+        { day: 6, branch: "Al Majaz", sales: 39, txn: 1, avr: 39.0 }, { day: 6, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 6, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 7, branch: "Hamdan St", sales: 1637, txn: 37, avr: 44.2 }, { day: 7, branch: "Khalidiya", sales: 761, txn: 19, avr: 40.1 },
+        { day: 7, branch: "Mussafah", sales: 1291, txn: 21, avr: 61.5 }, { day: 7, branch: "Muroor", sales: 757, txn: 17, avr: 44.5 },
+        { day: 7, branch: "Al Barsha", sales: 740, txn: 14, avr: 52.9 }, { day: 7, branch: "Al Satwa", sales: 616, txn: 13, avr: 47.4 },
+        { day: 7, branch: "Al Majaz", sales: 679, txn: 13, avr: 52.2 }, { day: 7, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 7, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 8, branch: "Hamdan St", sales: 1466, txn: 35, avr: 41.9 }, { day: 8, branch: "Khalidiya", sales: 1072, txn: 26, avr: 41.2 },
+        { day: 8, branch: "Mussafah", sales: 3101, txn: 33, avr: 94.0 }, { day: 8, branch: "Muroor", sales: 1166, txn: 22, avr: 53.0 },
+        { day: 8, branch: "Al Barsha", sales: 725, txn: 17, avr: 42.6 }, { day: 8, branch: "Al Satwa", sales: 440, txn: 8, avr: 55.0 },
+        { day: 8, branch: "Al Majaz", sales: 1158, txn: 16, avr: 72.4 }, { day: 8, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 8, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 9, branch: "Hamdan St", sales: 2675, txn: 43, avr: 62.2 }, { day: 9, branch: "Khalidiya", sales: 1142, txn: 22, avr: 51.9 },
+        { day: 9, branch: "Mussafah", sales: 1147, txn: 28, avr: 41.0 }, { day: 9, branch: "Muroor", sales: 1285, txn: 22, avr: 58.4 },
+        { day: 9, branch: "Al Barsha", sales: 877, txn: 21, avr: 41.8 }, { day: 9, branch: "Al Satwa", sales: 374, txn: 10, avr: 37.4 },
+        { day: 9, branch: "Al Majaz", sales: 1165, txn: 16, avr: 72.8 }, { day: 9, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 9, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 10, branch: "Hamdan St", sales: 2799, txn: 49, avr: 57.1 }, { day: 10, branch: "Khalidiya", sales: 1053, txn: 22, avr: 47.9 },
+        { day: 10, branch: "Mussafah", sales: 1607, txn: 16, avr: 100.4 }, { day: 10, branch: "Muroor", sales: 1037, txn: 18, avr: 57.6 },
+        { day: 10, branch: "Al Barsha", sales: 1312, txn: 26, avr: 50.5 }, { day: 10, branch: "Al Satwa", sales: 862, txn: 14, avr: 61.6 },
+        { day: 10, branch: "Al Majaz", sales: 931, txn: 14, avr: 66.5 }, { day: 10, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 10, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 11, branch: "Hamdan St", sales: 1461, txn: 33, avr: 44.3 }, { day: 11, branch: "Khalidiya", sales: 928, txn: 19, avr: 48.8 },
+        { day: 11, branch: "Mussafah", sales: 909, txn: 23, avr: 39.5 }, { day: 11, branch: "Muroor", sales: 1463, txn: 19, avr: 77.0 },
+        { day: 11, branch: "Al Barsha", sales: 736, txn: 20, avr: 36.8 }, { day: 11, branch: "Al Satwa", sales: 345, txn: 6, avr: 57.5 },
+        { day: 11, branch: "Al Majaz", sales: 805, txn: 13, avr: 61.9 }, { day: 11, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 11, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 12, branch: "Hamdan St", sales: 2141, txn: 50, avr: 42.8 }, { day: 12, branch: "Khalidiya", sales: 684, txn: 17, avr: 40.2 },
+        { day: 12, branch: "Mussafah", sales: 1068, txn: 24, avr: 44.5 }, { day: 12, branch: "Muroor", sales: 1453, txn: 25, avr: 58.1 },
+        { day: 12, branch: "Al Barsha", sales: 952, txn: 20, avr: 47.6 }, { day: 12, branch: "Al Satwa", sales: 281, txn: 7, avr: 40.1 },
+        { day: 12, branch: "Al Majaz", sales: 285, txn: 7, avr: 40.7 }, { day: 12, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 12, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 13, branch: "Hamdan St", sales: 1324, txn: 36, avr: 36.8 }, { day: 13, branch: "Khalidiya", sales: 712, txn: 14, avr: 50.9 },
+        { day: 13, branch: "Mussafah", sales: 1399, txn: 27, avr: 51.8 }, { day: 13, branch: "Muroor", sales: 976, txn: 16, avr: 61.0 },
+        { day: 13, branch: "Al Barsha", sales: 404, txn: 10, avr: 40.4 }, { day: 13, branch: "Al Satwa", sales: 318, txn: 8, avr: 39.8 },
+        { day: 13, branch: "Al Majaz", sales: 426, txn: 6, avr: 71.0 }, { day: 13, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 13, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 14, branch: "Hamdan St", sales: 1711, txn: 43, avr: 39.8 }, { day: 14, branch: "Khalidiya", sales: 960, txn: 21, avr: 45.7 },
+        { day: 14, branch: "Mussafah", sales: 1209, txn: 27, avr: 44.8 }, { day: 14, branch: "Muroor", sales: 579, txn: 14, avr: 41.4 },
+        { day: 14, branch: "Al Barsha", sales: 747, txn: 16, avr: 46.7 }, { day: 14, branch: "Al Satwa", sales: 775, txn: 15, avr: 51.7 },
+        { day: 14, branch: "Al Majaz", sales: 764, txn: 15, avr: 50.9 }, { day: 14, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 14, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 15, branch: "Hamdan St", sales: 2216, txn: 44, avr: 50.4 }, { day: 15, branch: "Khalidiya", sales: 1487, txn: 28, avr: 53.1 },
+        { day: 15, branch: "Mussafah", sales: 906, txn: 20, avr: 45.3 }, { day: 15, branch: "Muroor", sales: 1100, txn: 19, avr: 57.9 },
+        { day: 15, branch: "Al Barsha", sales: 893, txn: 16, avr: 55.8 }, { day: 15, branch: "Al Satwa", sales: 436, txn: 12, avr: 36.3 },
+        { day: 15, branch: "Al Majaz", sales: 688, txn: 11, avr: 62.5 }, { day: 15, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 15, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 16, branch: "Hamdan St", sales: 2429, txn: 56, avr: 43.4 }, { day: 16, branch: "Khalidiya", sales: 1172, txn: 25, avr: 46.9 },
+        { day: 16, branch: "Mussafah", sales: 1028, txn: 22, avr: 46.7 }, { day: 16, branch: "Muroor", sales: 1464, txn: 26, avr: 56.3 },
+        { day: 16, branch: "Al Barsha", sales: 1534, txn: 25, avr: 61.4 }, { day: 16, branch: "Al Satwa", sales: 536, txn: 8, avr: 67.0 },
+        { day: 16, branch: "Al Majaz", sales: 835, txn: 12, avr: 69.6 }, { day: 16, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 16, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 17, branch: "Hamdan St", sales: 2235, txn: 47, avr: 47.6 }, { day: 17, branch: "Khalidiya", sales: 1478, txn: 25, avr: 59.1 },
+        { day: 17, branch: "Mussafah", sales: 1147, txn: 25, avr: 45.9 }, { day: 17, branch: "Muroor", sales: 1423, txn: 26, avr: 54.7 },
+        { day: 17, branch: "Al Barsha", sales: 929, txn: 18, avr: 51.6 }, { day: 17, branch: "Al Satwa", sales: 623, txn: 9, avr: 69.2 },
+        { day: 17, branch: "Al Majaz", sales: 610, txn: 11, avr: 55.5 }, { day: 17, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 17, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 18, branch: "Hamdan St", sales: 1728, txn: 46, avr: 37.6 }, { day: 18, branch: "Khalidiya", sales: 1049, txn: 21, avr: 49.9 },
+        { day: 18, branch: "Mussafah", sales: 1023, txn: 25, avr: 40.9 }, { day: 18, branch: "Muroor", sales: 968, txn: 14, avr: 69.1 },
+        { day: 18, branch: "Al Barsha", sales: 768, txn: 20, avr: 38.4 }, { day: 18, branch: "Al Satwa", sales: 298, txn: 6, avr: 49.7 },
+        { day: 18, branch: "Al Majaz", sales: 515, txn: 7, avr: 73.6 }, { day: 18, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 18, branch: "Al Electra", sales: 0, txn: 0, avr: 0 },
+        { day: 19, branch: "Hamdan St", sales: 1715, txn: 43, avr: 39.9 }, { day: 19, branch: "Khalidiya", sales: 929, txn: 20, avr: 46.5 },
+        { day: 19, branch: "Mussafah", sales: 1944, txn: 30, avr: 64.8 }, { day: 19, branch: "Muroor", sales: 1061, txn: 16, avr: 66.3 },
+        { day: 19, branch: "Al Barsha", sales: 500, txn: 10, avr: 50.0 }, { day: 19, branch: "Al Satwa", sales: 328, txn: 6, avr: 54.7 },
+        { day: 19, branch: "Al Majaz", sales: 699, txn: 13, avr: 53.8 }, { day: 19, branch: "Al Rigga", sales: 0, txn: 0, avr: 0 },
+        { day: 19, branch: "Al Electra", sales: 0, txn: 0, avr: 0 }
+    ];
+
+    // ONLINE DATA (Parsed from user input)
+    // Note: Input was raw text, parsed here into structured objects
+    const initialOnlineData = [
+        // Day 1
+        createRecord(1, "Hamdan St", 839, 12, 69.9),
+        createRecord(1, "Khalidiya", 281.9, 4, 70.5),
+        createRecord(1, "Mussafah", 352, 7, 50.3),
+        createRecord(1, "Muroor", 163, 2, 81.5),
+        createRecord(1, "Al Barsha", 295, 5, 59.0),
+        createRecord(1, "Al Satwa", 305, 5, 61.0),
+        createRecord(1, "Al Majaz", 0, 0, 0.0),
+        createRecord(1, "Al Rigga", 0, 0, 0.0),
+        createRecord(1, "Al Electra", 0, 0, 0.0),
+
+        // Day 2
+        createRecord(2, "Hamdan St", 824, 16, 51.5),
+        createRecord(2, "Khalidiya", 769, 11, 69.9),
+        createRecord(2, "Mussafah", 190, 5, 38.0),
+        createRecord(2, "Muroor", 217, 2, 108.5),
+        createRecord(2, "Al Barsha", 118, 1, 118.0),
+        createRecord(2, "Al Satwa", 154, 4, 38.5),
+        createRecord(2, "Al Majaz", 0, 0, 0.0),
+        createRecord(2, "Al Rigga", 0, 0, 0.0),
+        createRecord(2, "Al Electra", 0, 0, 0.0),
+
+        // Day 3
+        createRecord(3, "Hamdan St", 449, 11, 40.8),
+        createRecord(3, "Khalidiya", 185, 4, 46.3),
+        createRecord(3, "Mussafah", 116, 3, 38.7),
+        createRecord(3, "Muroor", 176, 2, 88.0),
+        createRecord(3, "Al Barsha", 206, 3, 68.7),
+        createRecord(3, "Al Satwa", 293, 4, 73.3),
+        createRecord(3, "Al Majaz", 0, 0, 0.0),
+        createRecord(3, "Al Rigga", 0, 0, 0.0),
+        createRecord(3, "Al Electra", 0, 0, 0.0),
+
+        // Day 4
+        createRecord(4, "Hamdan St", 407, 8, 50.9),
+        createRecord(4, "Khalidiya", 160, 4, 40.0),
+        createRecord(4, "Mussafah", 37, 1, 37.0),
+        createRecord(4, "Muroor", 124, 3, 41.3),
+        createRecord(4, "Al Barsha", 75, 2, 37.5),
+        createRecord(4, "Al Satwa", 127, 4, 31.8),
+        createRecord(4, "Al Majaz", 0, 0, 0.0),
+        createRecord(4, "Al Rigga", 0, 0, 0.0),
+        createRecord(4, "Al Electra", 0, 0, 0.0),
+
+        // Day 5
+        createRecord(5, "Hamdan St", 468, 8, 58.5),
+        createRecord(5, "Khalidiya", 227, 5, 45.4),
+        createRecord(5, "Mussafah", 79, 2, 39.5),
+        createRecord(5, "Muroor", 0, 0, 0.0),
+        createRecord(5, "Al Barsha", 112, 2, 56.0),
+        createRecord(5, "Al Satwa", 223, 6, 37.2),
+        createRecord(5, "Al Majaz", 0, 0, 0.0),
+        createRecord(5, "Al Rigga", 0, 0, 0.0),
+        createRecord(5, "Al Electra", 0, 0, 0.0),
+
+        // Day 6
+        createRecord(6, "Hamdan St", 382, 7, 54.6),
+        createRecord(6, "Khalidiya", 106, 3, 35.3),
+        createRecord(6, "Mussafah", 200, 6, 33.3),
+        createRecord(6, "Muroor", 0, 0, 0.0),
+        createRecord(6, "Al Barsha", 167, 2, 83.5),
+        createRecord(6, "Al Satwa", 92, 3, 30.7),
+        createRecord(6, "Al Majaz", 0, 0, 0.0),
+        createRecord(6, "Al Rigga", 0, 0, 0.0),
+        createRecord(6, "Al Electra", 0, 0, 0.0),
+
+        // Day 7
+        createRecord(7, "Hamdan St", 396, 11, 36.0),
+        createRecord(7, "Khalidiya", 61, 1, 61.0),
+        createRecord(7, "Mussafah", 70, 2, 35.0),
+        createRecord(7, "Muroor", 38, 1, 38.0),
+        createRecord(7, "Al Barsha", 59, 1, 59.0),
+        createRecord(7, "Al Satwa", 211, 6, 35.2),
+        createRecord(7, "Al Majaz", 0, 0, 0.0),
+        createRecord(7, "Al Rigga", 0, 0, 0.0),
+        createRecord(7, "Al Electra", 0, 0, 0.0),
+
+        // Day 8
+        createRecord(8, "Hamdan St", 279, 5, 55.8),
+        createRecord(8, "Khalidiya", 762, 13, 58.6),
+        createRecord(8, "Mussafah", 41, 1, 41.0),
+        createRecord(8, "Muroor", 0, 0, 0.0),
+        createRecord(8, "Al Barsha", 75, 2, 37.5),
+        createRecord(8, "Al Satwa", 21, 1, 21.0),
+        createRecord(8, "Al Majaz", 0, 0, 0.0),
+        createRecord(8, "Al Rigga", 0, 0, 0.0),
+        createRecord(8, "Al Electra", 0, 0, 0.0),
+
+        // Day 9
+        createRecord(9, "Hamdan St", 649, 13, 49.9),
+        createRecord(9, "Khalidiya", 568, 7, 81.1),
+        createRecord(9, "Mussafah", 163, 4, 40.8),
+        createRecord(9, "Muroor", 0, 0, 0.0),
+        createRecord(9, "Al Barsha", 0, 0, 0.0),
+        createRecord(9, "Al Satwa", 175, 4, 43.8),
+        createRecord(9, "Al Majaz", 0, 0, 0.0),
+        createRecord(9, "Al Rigga", 0, 0, 0.0),
+        createRecord(9, "Al Electra", 0, 0, 0.0),
+
+        // Day 10
+        createRecord(10, "Hamdan St", 493, 13, 37.9),
+        createRecord(10, "Khalidiya", 310, 6, 51.7),
+        createRecord(10, "Mussafah", 184, 4, 46.0),
+        createRecord(10, "Muroor", 246, 4, 61.5),
+        createRecord(10, "Al Barsha", 467, 4, 116.8),
+        createRecord(10, "Al Satwa", 59, 2, 29.5),
+        createRecord(10, "Al Majaz", 0, 0, 0.0),
+        createRecord(10, "Al Rigga", 0, 0, 0.0),
+        createRecord(10, "Al Electra", 0, 0, 0.0),
+
+        // Day 11
+        createRecord(11, "Hamdan St", 699, 14, 49.9),
+        createRecord(11, "Khalidiya", 91, 2, 45.5),
+        createRecord(11, "Mussafah", 142, 3, 47.3),
+        createRecord(11, "Muroor", 112, 2, 56.0),
+        createRecord(11, "Al Barsha", 78, 2, 39.0),
+        createRecord(11, "Al Satwa", 68, 2, 34.0),
+        createRecord(11, "Al Majaz", 0, 0, 0.0),
+        createRecord(11, "Al Rigga", 0, 0, 0.0),
+        createRecord(11, "Al Electra", 0, 0, 0.0),
+
+        // Day 12
+        createRecord(12, "Hamdan St", 555, 12, 46.3),
+        createRecord(12, "Khalidiya", 140, 5, 28.0),
+        createRecord(12, "Mussafah", 98, 3, 32.7),
+        createRecord(12, "Muroor", 392, 4, 98.0),
+        createRecord(12, "Al Barsha", 123, 2, 61.5),
+        createRecord(12, "Al Satwa", 172, 6, 28.7),
+        createRecord(12, "Al Majaz", 0, 0, 0.0),
+        createRecord(12, "Al Rigga", 0, 0, 0.0),
+        createRecord(12, "Al Electra", 0, 0, 0.0),
+
+        // Day 13
+        createRecord(13, "Hamdan St", 339, 5, 67.8),
+        createRecord(13, "Khalidiya", 275, 5, 55.0),
+        createRecord(13, "Mussafah", 119, 3, 39.7),
+        createRecord(13, "Muroor", 38, 1, 38.0),
+        createRecord(13, "Al Barsha", 154, 2, 77.0),
+        createRecord(13, "Al Satwa", 187, 5, 37.4),
+        createRecord(13, "Al Majaz", 0, 0, 0.0),
+        createRecord(13, "Al Rigga", 0, 0, 0.0),
+        createRecord(13, "Al Electra", 0, 0, 0.0),
+
+        // Day 14
+        createRecord(14, "Hamdan St", 553.9, 14, 39.6),
+        createRecord(14, "Khalidiya", 442, 4, 110.5),
+        createRecord(14, "Mussafah", 39, 1, 39.0),
+        createRecord(14, "Muroor", 0, 0, 0.0),
+        createRecord(14, "Al Barsha", 37, 1, 37.0),
+        createRecord(14, "Al Satwa", 210, 6, 35.0),
+        createRecord(14, "Al Majaz", 0, 0, 0.0),
+        createRecord(14, "Al Rigga", 0, 0, 0.0),
+        createRecord(14, "Al Electra", 0, 0, 0.0),
+
+        // Day 15
+        createRecord(15, "Hamdan St", 114, 4, 28.5),
+        createRecord(15, "Khalidiya", 382, 5, 76.4),
+        createRecord(15, "Mussafah", 29, 1, 29.0),
+        createRecord(15, "Muroor", 60, 1, 60.0),
+        createRecord(15, "Al Barsha", 421, 4, 105.3),
+        createRecord(15, "Al Satwa", 104, 4, 26.0),
+        createRecord(15, "Al Majaz", 0, 0, 0.0),
+        createRecord(15, "Al Rigga", 0, 0, 0.0),
+        createRecord(15, "Al Electra", 0, 0, 0.0),
+
+        // Day 16
+        createRecord(16, "Hamdan St", 677, 15, 45.1),
+        createRecord(16, "Khalidiya", 585, 8, 73.1),
+        createRecord(16, "Mussafah", 218, 5, 43.6),
+        createRecord(16, "Muroor", 40, 1, 40.0),
+        createRecord(16, "Al Barsha", 122, 2, 61.0),
+        createRecord(16, "Al Satwa", 123, 4, 30.8),
+        createRecord(16, "Al Majaz", 0, 0, 0.0),
+        createRecord(16, "Al Rigga", 0, 0, 0.0),
+        createRecord(16, "Al Electra", 0, 0, 0.0),
+
+        // Day 17
+        createRecord(17, "Hamdan St", 717, 14, 51.2),
+        createRecord(17, "Khalidiya", 603.9, 7, 86.3),
+        createRecord(17, "Mussafah", 115, 3, 38.3),
+        createRecord(17, "Muroor", 50, 1, 50.0),
+        createRecord(17, "Al Barsha", 82, 2, 41.0),
+        createRecord(17, "Al Satwa", 226, 8, 28.3),
+        createRecord(17, "Al Majaz", 0, 0, 0.0),
+        createRecord(17, "Al Rigga", 0, 0, 0.0),
+        createRecord(17, "Al Electra", 0, 0, 0.0),
+
+        // Day 18
+        createRecord(18, "Hamdan St", 192, 4, 48.0),
+        createRecord(18, "Khalidiya", 544.7, 3, 181.6),
+        createRecord(18, "Mussafah", 102, 4, 25.5),
+        createRecord(18, "Muroor", 0, 0, 0.0),
+        createRecord(18, "Al Barsha", 219, 4, 54.8),
+        createRecord(18, "Al Satwa", 89, 4, 22.3),
+        createRecord(18, "Al Majaz", 0, 0, 0.0),
+        createRecord(18, "Al Rigga", 0, 0, 0.0),
+        createRecord(18, "Al Electra", 0, 0, 0.0),
+
+        // Day 19
+        createRecord(19, "Hamdan St", 388, 8, 48.5),
+        createRecord(19, "Khalidiya", 170, 3, 56.7),
+        createRecord(19, "Mussafah", 423, 7, 60.4),
+        createRecord(19, "Muroor", 64, 2, 32.0),
+        createRecord(19, "Al Barsha", 60, 1, 60.0),
+        createRecord(19, "Al Satwa", 198, 7, 28.3),
+        createRecord(19, "Al Majaz", 0, 0, 0.0),
+        createRecord(19, "Al Rigga", 0, 0, 0.0),
+        createRecord(19, "Al Electra", 0, 0, 0.0),
+
+        // Day 20
+        createRecord(20, "Hamdan St", 330, 8, 41.3),
+        createRecord(20, "Khalidiya", 170, 4, 42.5),
+        createRecord(20, "Mussafah", 0, 0, 0.0),
+        createRecord(20, "Muroor", 0, 0, 0.0),
+        createRecord(20, "Al Barsha", 0, 0, 0.0),
+        createRecord(20, "Al Satwa", 0, 0, 0.0),
+        createRecord(20, "Al Majaz", 0, 0, 0.0),
+        createRecord(20, "Al Rigga", 0, 0, 0.0),
+        createRecord(20, "Al Electra", 0, 0, 0.0),
+    ];
+
+    const app = {
+        data: {
+            delivery: [...initialDeliveryData],
+            online: [...initialOnlineData]
+        },
+        currentChannel: 'delivery',
+        charts: {},
+
+        init: () => {
+            app.setupUI();
+            app.renderDashboard();
+            app.renderTable();
+            
+            // Handle Resize
+            window.addEventListener('resize', () => {
+                if(app.charts.main) app.charts.main.resize();
+                if(app.charts.avr) app.charts.avr.resize();
+            });
+        },
+
+        setupUI: () => {
+            const daySel = document.getElementById('inpDay');
+            for(let i=1; i<=31; i++) {
+                const opt = document.createElement('option');
+                opt.value = i; opt.text = `Day ${i}`;
+                daySel.appendChild(opt);
+            }
+            const branchSel = document.getElementById('inpBranch');
+            const chartFilter = document.getElementById('chartBranchFilter');
+            BRANCHES.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b; opt.text = b;
+                branchSel.appendChild(opt);
+                
+                const opt2 = document.createElement('option');
+                opt2.value = b; opt2.text = b;
+                chartFilter.appendChild(opt2);
+            });
+        },
+
+        switchTab: (id) => {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            
+            // Map simple ID to index logic
+            const navMap = {'dashboard':0, 'matrix':1, 'settings':2};
+            document.getElementById('view-'+id).classList.add('active');
+            document.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+
+            // Refresh charts if dashboard
+            if(id === 'dashboard') app.updateCharts();
+        },
+
+        setChannel: (channel, el) => {
+            app.currentChannel = channel;
+            document.querySelectorAll('.filter-opt').forEach(d => d.classList.remove('active'));
+            el.classList.add('active');
+            
+            // Refresh views
+            app.renderDashboard();
+            app.renderTable();
+            app.showToast(`Switched to ${channel === 'delivery' ? 'Delivery' : 'Online'} View`);
+        },
+
+        handleChannelChange: () => {
+            // Logic handled in submit
+        },
+
+        saveData: (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const channel = formData.get('channel'); // Get selected radio
+            
+            const day = parseInt(document.getElementById('inpDay').value);
+            const branch = document.getElementById('inpBranch').value;
+            const sales = parseFloat(document.getElementById('inpSales').value);
+            const txn = parseInt(document.getElementById('inpTxn').value);
+            const avr = txn > 0 ? (sales/txn).toFixed(1) : 0;
+
+            const targetData = channel === 'delivery' ? app.data.delivery : app.data.online;
+            
+            const existingIndex = targetData.findIndex(d => d.day === day && d.branch === branch);
+            
+            const record = { day, branch, sales, txn, avr };
+            
+            if (existingIndex > -1) {
+                targetData[existingIndex] = record;
+            } else {
+                targetData.push(record);
+            }
+
+            app.renderDashboard();
+            app.renderTable();
+            document.getElementById('addModal').style.display = 'none';
+            app.showToast('Record saved successfully');
+        },
+
+        getActiveData: () => {
+            return app.currentChannel === 'delivery' ? app.data.delivery : app.data.online;
+        },
+
+        renderTable: () => {
+            const currentData = app.getActiveData();
+            const thead = document.querySelector('#matrixTable thead');
+            const tbody = document.querySelector('#matrixTable tbody');
+            const tfoot = document.querySelector('#matrixTable tfoot');
+            
+            // 1. Header
+            let headerHTML = `<tr><th style="width:60px;">Day</th>`;
+            BRANCHES.forEach(b => {
+                headerHTML += `<th class="${b === 'Hamdan St' ? 'highlight' : ''}">${b}</th>`;
+            });
+            headerHTML += '<th style="background:var(--text-main); color:white;">TOTAL</th></tr>';
+            thead.innerHTML = headerHTML;
+
+            // 2. Body
+            let bodyHTML = '';
+            let totals = { sales: 0, txn: 0 };
+
+            for(let day=1; day<=31; day++) {
+                // Filter data for this day
+                const dayData = currentData.filter(d => d.day === day);
+                let rowSales = 0;
+                let rowTxn = 0;
+                
+                let rowHTML = `<tr>`;
+                rowHTML += `<td style="font-weight:bold; color:#888;">${day}</td>`;
+
+                BRANCHES.forEach(b => {
+                    const d = dayData.find(x => x.branch === b);
+                    const sales = d ? d.sales : 0;
+                    const txn = d ? d.txn : 0;
+                    const avr = d ? parseFloat(d.avr) : 0;
+
+                    rowSales += sales;
+                    rowTxn += txn;
+                    totals.sales += sales;
+                    totals.txn += txn;
+
+                    // Color Class
+                    let avrClass = 'avr-null';
+                    if(avr > 0) {
+                        if(avr > 50) avrClass = 'avr-high';
+                        else if(avr >= 40) avrClass = 'avr-med';
+                        else avrClass = 'avr-low';
+                    }
+
+                    // Cell Style
+                    let cellStyle = '';
+                    if(sales === 0) cellStyle = 'color:#eee;';
+
+                    rowHTML += `
+                        <td style="${cellStyle}">
+                            ${sales > 0 ? 
+                                `<span class="cell-main">${sales.toLocaleString()}</span>
+                                 <span class="cell-sub">${txn} Txn</span>
+                                 <div class="cell-avr ${avrClass}">AVR ${avr}</div>` 
+                            : '<span style="font-size:1.2rem;">-</span>'}
+                        </td>`;
+                });
+
+                // Row Total
+                const rowAVR = rowTxn > 0 ? (rowSales/rowTxn).toFixed(1) : 0;
+                rowHTML += `<td style="background:#f8f9fa;">
+                    <div style="font-weight:800;">${rowSales.toLocaleString()}</div>
+                    <div style="font-size:0.75rem; color:#666;">${rowTxn} Txn</div>
+                </td></tr>`;
+                
+                bodyHTML += rowHTML;
+            }
+            tbody.innerHTML = bodyHTML;
+
+            // 3. Footer
+            const grandAVR = totals.txn > 0 ? (totals.sales/totals.txn).toFixed(1) : 0;
+            tfoot.innerHTML = `
+                <tr>
+                    <td>TOTAL</td>
+                    ${BRANCHES.map(b => {
+                        const branchSum = currentData.filter(x => x.branch === b).reduce((acc, curr) => acc + curr.sales, 0);
+                        return `<td>${branchSum.toLocaleString()}</td>`;
+                    }).join('')}
+                    <td style="background:var(--primary);">
+                        <div>${totals.sales.toLocaleString()}</div>
+                        <div style="font-size:0.75rem; opacity:0.8;">AVR: ${grandAVR}</div>
+                    </td>
+                </tr>`;
+        },
+
+        renderDashboard: () => {
+            const currentData = app.getActiveData();
+            
+            // 1. Calculate KPIs
+            const totalSales = currentData.reduce((acc, curr) => acc + curr.sales, 0);
+            const totalTxn = currentData.reduce((acc, curr) => acc + curr.txn, 0);
+            const globalATV = totalTxn > 0 ? (totalSales/totalTxn).toFixed(1) : 0;
+
+            document.getElementById('kpi-total-sales').innerText = `AED ${totalSales.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}`;
+            document.getElementById('kpi-atv').innerText = `AED ${globalATV}`;
+
+            // Branch Ranking
+            let branchStats = {};
+            BRANCHES.forEach(b => {
+                const bData = currentData.filter(x => x.branch === b);
+                const bSales = bData.reduce((a,c) => a + c.sales, 0);
+                const bTxn = bData.reduce((a,c) => a + c.txn, 0);
+                const bAvr = bTxn > 0 ? (bSales/bTxn) : 0;
+                branchStats[b] = { sales: bSales, avr: bAvr };
+            });
+
+            // Find Best
+            let bestB = Object.keys(branchStats).reduce((a, b) => branchStats[a].sales > branchStats[b].sales ? a : b);
+            if(branchStats[bestB].sales === 0) bestB = "N/A";
+            document.getElementById('kpi-top-branch').innerText = bestB;
+            document.getElementById('kpi-top-val').innerText = branchStats[bestB] ? `${branchStats[bestB].sales.toLocaleString(undefined, {maximumFractionDigits:0})} AED` : "0 AED";
+
+            // Find Weakest (Lowest ATV that has sales)
+            let weakB = Object.keys(branchStats).reduce((a, b) => {
+                 if(branchStats[b].avr === 0) return a;
+                 if(branchStats[a].avr === 0) return b;
+                 return branchStats[a].avr < branchStats[b].avr ? a : b;
+            });
+             if(branchStats[weakB].avr === 0) weakB = "N/A";
+            document.getElementById('kpi-low-branch').innerText = weakB;
+
+            // 2. Init Charts
+            app.updateCharts();
+        },
+
+        updateCharts: () => {
+            const ctxMain = document.getElementById('mainChart');
+            const ctxAvr = document.getElementById('avrChart');
+            const filterVal = document.getElementById('chartBranchFilter').value;
+            const currentData = app.getActiveData();
+
+            // Prepare Data for Main Chart (Sales Trend)
+            let labels = Array.from({length: 20}, (_, i) => i + 1); // Days 1-20
+            let salesData = new Array(20).fill(0);
+            let txnData = new Array(20).fill(0);
+
+            currentData.forEach(d => {
+                if(d.day <= 20) {
+                    if(filterVal === 'all' || d.branch === filterVal) {
+                        salesData[d.day-1] += d.sales;
+                        txnData[d.day-1] += d.txn;
+                    }
+                }
+            });
+
+            // Main Chart
+            if(app.charts.main) app.charts.main.destroy();
+            app.charts.main = new Chart(ctxMain, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Sales (AED)',
+                            data: salesData,
+                            backgroundColor: '#D32F2F',
+                            borderRadius: 4,
+                            order: 2
+                        },
+                        {
+                            label: 'Transactions',
+                            data: txnData,
+                            type: 'line',
+                            borderColor: '#FFC107',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            yAxisID: 'y1',
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
+                        y1: { position: 'right', beginAtZero: true, grid: { display: false } }
+                    }
+                }
+            });
+
+            // Branch Performance Chart (Horizontal Bar)
+            let branchLabels = BRANCHES;
+            let avrData = BRANCHES.map(b => {
+                const bData = currentData.filter(x => x.branch === b);
+                const s = bData.reduce((a,c)=>a+c.sales,0);
+                const t = bData.reduce((a,c)=>a+c.txn,0);
+                return t > 0 ? (s/t) : 0;
+            });
+
+            if(app.charts.avr) app.charts.avr.destroy();
+            app.charts.avr = new Chart(ctxAvr, {
+                type: 'bar',
+                indexAxis: 'y',
+                data: {
+                    labels: branchLabels,
+                    datasets: [{
+                        label: 'Avg Transaction Value',
+                        data: avrData,
+                        backgroundColor: avrData.map(v => v > 50 ? '#388E3C' : (v > 40 ? '#F57C00' : '#D32F2F')),
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: { x: { beginAtZero: true } }
+                }
+            });
+        },
+
+        openModal: () => {
+            document.getElementById('addForm').reset();
+            // Set modal radio to current view
+            const radios = document.getElementsByName('channel');
+            radios.forEach(r => {
+                r.checked = (r.value === app.currentChannel);
+            });
+            document.getElementById('addModal').style.display = 'flex';
+        },
+
+        showToast: (msg) => {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        },
+
+        exportCSV: () => {
+            const currentData = app.getActiveData();
+            let csv = "Day,Branch,Sales,Transactions,AVR\n";
+            currentData.forEach(row => {
+                csv += `${row.day},${row.branch},${row.sales},${row.txn},${row.avr}\n`;
+            });
+            
+            const hiddenElement = document.createElement('a');
+            hiddenElement.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
+            hiddenElement.target = '_blank';
+            hiddenElement.download = `crispy_${app.currentChannel}_data.csv`;
+            hiddenElement.click();
+            app.showToast("CSV Exported");
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', app.init);
+</script>
+</body>
+</html>
